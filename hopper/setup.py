@@ -626,8 +626,8 @@ if not SKIP_CUDA_BUILD:
             name=f"{PACKAGE_NAME}._C",
             sources=sources,
             extra_compile_args={
-                "cxx": ["-O3", "-std=c++17", "-DPy_LIMITED_API=0x03090000"] + stable_args + feature_args,
-                "nvcc": nvcc_threads_args() + nvcc_flags + cc_flag + feature_args,
+                "cxx":["-O3", "-std=c++17", f"-DPy_LIMITED_API={dynamic_c_macro}"],
+                "nvcc": nvcc_flags +[f"-DPy_LIMITED_API={dynamic_c_macro}"],
             },
             include_dirs=include_dirs,
             py_limited_api=True,
@@ -706,6 +706,7 @@ class CachedWheelsCommand(_bdist_wheel):
 # Fallbacks in case metadata is missing
 dynamic_abi_tag = "cp39"
 dynamic_python_requires = ">=3.9"
+dynamic_c_macro = "0x03090000"
 
 try:
     target = os.environ.get("TORCH_TARGET_VERSION")
@@ -720,6 +721,7 @@ try:
     if major >= 2 and minor >= 9:
         dynamic_abi_tag = "cp310"
         dynamic_python_requires = ">=3.10"
+        dynamic_c_macro = "0x030A0000"
 except Exception:
     pass # Sets cp39
 
