@@ -416,12 +416,36 @@ def nvcc_threads_args():
     nvcc_threads = os.getenv("NVCC_THREADS") or "2"
     return ["--threads", nvcc_threads]
 
+#
+# Fallbacks in case metadata is missing
+dynamic_abi_tag = "cp39"
+dynamic_python_requires = ">=3.9"
+dynamic_c_macro = "0x03090000"
+
+try:
+    target = os.environ.get("TORCH_TARGET_VERSION")
+    if target:
+        # Parse hex string for PyTorch 2.9
+        major, minor = (int(target, 16) >> 56) & 0xFF, (int(target, 16) >> 48) & 0xFF
+    else:
+        # Fallback to the installed PyTorch version
+        major, minor = map(int, torch.__version__.split('.')[:2])
+        
+    # Since PyTorch 2.9+ dropped Python 3.9 support
+    if major >= 2 and minor >= 9:
+        dynamic_abi_tag = "cp310"
+        dynamic_python_requires = ">=3.10"
+        dynamic_c_macro = "0x030A0000"
+except Exception:
+    pass # Sets cp39
+
+# Create the dynamic options dictionary that will be passed to setup()
+dynamic_options = {"bdist_wheel": {"py_limited_api": dynamic_abi_tag}}
 
 # NVIDIA_TOOLCHAIN_VERSION = {"nvcc": "12.3.107"}
 NVIDIA_TOOLCHAIN_VERSION = {"nvcc": "12.6.85", "ptxas": "12.8.93"}
 
 exe_extension = sysconfig.get_config_var("EXE")
-
 
 cmdclass = {}
 ext_modules = []
@@ -576,13 +600,13 @@ if not SKIP_CUDA_BUILD:
         sources_bwd_sm80 = []
     
     # Choose between flash_api.cpp and flash_api_stable.cpp based on torch version
-    torch_version = parse(torch.__version__)
-    target_version = parse("2.9.0.dev20250830")
     stable_args = []
       
-    if torch_version >= target_version:
+    if major >= 2 and minor >= 9:
         flash_api_source = "flash_api_stable.cpp"
-        stable_args = ["-DTORCH_TARGET_VERSION=0x0209000000000000"]  # Targets minimum runtime version torch 2.9.0
+        # Use the environment variable if provided, otherwise default to 2.9 hex
+        target_env = os.environ.get("TORCH_TARGET_VERSION", "0x0209000000000000")
+        stable_args = [f"-DTORCH_TARGET_VERSION={target_env}"]
     else:
         flash_api_source = "flash_api.cpp"
 
@@ -702,31 +726,6 @@ class CachedWheelsCommand(_bdist_wheel):
             print("Precompiled wheel not found. Building from source...")
             # If the wheel could not be downloaded, build from source
             super().run()
-
-# Fallbacks in case metadata is missing
-dynamic_abi_tag = "cp39"
-dynamic_python_requires = ">=3.9"
-dynamic_c_macro = "0x03090000"
-
-try:
-    target = os.environ.get("TORCH_TARGET_VERSION")
-    if target:
-        # Parse hex string for PyTorch 2.9
-        major, minor = (int(target, 16) >> 56) & 0xFF, (int(target, 16) >> 48) & 0xFF
-    else:
-        # Fallback to the installed PyTorch version
-        major, minor = map(int, torch.__version__.split('.')[:2])
-        
-    # Since PyTorch 2.9+ dropped Python 3.9 support
-    if major >= 2 and minor >= 9:
-        dynamic_abi_tag = "cp310"
-        dynamic_python_requires = ">=3.10"
-        dynamic_c_macro = "0x030A0000"
-except Exception:
-    pass # Sets cp39
-
-# Create the dynamic options dictionary that will be passed to setup()
-dynamic_options = {"bdist_wheel": {"py_limited_api": dynamic_abi_tag}}
 
 setup(
     name=PACKAGE_NAME,
