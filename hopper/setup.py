@@ -13,7 +13,6 @@ import platform
 import sysconfig
 import tarfile
 import itertools
-import importlib.metadata
 
 from setuptools import setup, find_packages
 import subprocess
@@ -709,15 +708,18 @@ dynamic_abi_tag = "cp39"
 dynamic_python_requires = ">=3.9"
 
 try:
-    # Derive minimum Python version from installed torch distribution metadata
-    torch_requires_python = importlib.metadata.metadata("torch").get("Requires-Python", "")
-    
-    # Extract the minor version from strings like ">=3.10.0" or ">=3.9"
-    match = re.search(r'3\.(\d+)', torch_requires_python)
-    if match:
-        minor_version = match.group(1)
-        dynamic_abi_tag = f"cp3{minor_version}"
-        dynamic_python_requires = f">=3.{minor_version}"
+    target = os.environ.get("TORCH_TARGET_VERSION")
+    if target:
+        # Parse hex string for PyTorch 2.9
+        major, minor = (int(target, 16) >> 56) & 0xFF, (int(target, 16) >> 48) & 0xFF
+    else:
+        # Fallback to the installed PyTorch version
+        major, minor = map(int, torch.__version__.split('.')[:2])
+        
+    # Since PyTorch 2.9+ dropped Python 3.9 support
+    if major >= 2 and minor >= 9:
+        dynamic_abi_tag = "cp310"
+        dynamic_python_requires = ">=3.10"
 except Exception:
     pass # Sets cp39
 
